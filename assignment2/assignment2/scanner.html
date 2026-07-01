@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IITK QR Attendance Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #111827;
+        }
+        .upload-btn-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .btn {
+            border: none;
+            color: white;
+            background-color: #3b82f6;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #2563eb;
+        }
+        .upload-btn-wrapper input[type=file] {
+            font-size: 100px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        #result-card {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            text-align: left;
+        }
+        .success { border-left: 4px solid #10b981 !important; }
+        .error { border-left: 4px solid #ef4444 !important; }
+        .label { font-size: 0.875rem; color: #6b7280; margin-bottom: 4px; font-weight: bold; }
+        .value { font-family: monospace; font-size: 1rem; color: #111827; margin-bottom: 16px; word-wrap: break-word;}
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>📸 IITK ID Card Scanner</h1>
+        <p style="color: #6b7280; margin-bottom: 24px;">Upload an image of your student ID card to extract the QR data.</p>
+        
+        <div class="upload-btn-wrapper">
+            <button class="btn">Select ID Image</button>
+            <input type="file" id="file-input" accept="image/*" />
+        </div>
+
+        <canvas id="canvas" hidden></canvas>
+
+        <div id="result-card">
+            <div id="status-icon" style="font-size: 2rem; text-align: center; margin-bottom: 10px;"></div>
+            <div class="label">Status</div>
+            <div id="status-text" class="value" style="font-family: inherit; font-weight: bold;"></div>
+            
+            <div class="label">Roll Number</div>
+            <div id="roll-number" class="value"></div>
+            
+            <div class="label">Raw QR String (Copy for assignment)</div>
+            <div id="raw-string" class="value" style="background: #e2e8f0; padding: 8px; border-radius: 4px;"></div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('file-input');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const resultCard = document.getElementById('result-card');
+
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    // Set canvas size to image size
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    
+                    // Draw image to canvas
+                    ctx.drawImage(img, 0, 0, img.width, img.height);
+                    
+                    // Extract pixel data
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    
+                    // Run jsQR
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                        inversionAttempts: "dontInvert",
+                    });
+
+                    displayResult(code);
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        function displayResult(code) {
+            resultCard.style.display = 'block';
+            
+            if (code) {
+                const rawString = code.data;
+                document.getElementById('raw-string').innerText = rawString;
+                
+                // Extract Roll Number (Same logic as parser.js)
+                const matches = rawString.match(/\b\d{6}\b/g);
+                let rollNumber = null;
+                
+                if (matches) {
+                    rollNumber = matches.find(num => Number(num) >= 240001 && Number(num) <= 241300);
+                }
+
+                if (rollNumber) {
+                    resultCard.className = 'success';
+                    document.getElementById('status-icon').innerText = '✅';
+                    document.getElementById('status-text').innerText = 'Attendance Marked Successfully!';
+                    document.getElementById('status-text').style.color = '#10b981';
+                    document.getElementById('roll-number').innerText = rollNumber;
+                } else {
+                    resultCard.className = 'error';
+                    document.getElementById('status-icon').innerText = '⚠️';
+                    document.getElementById('status-text').innerText = 'QR Found, but Roll Number not registered.';
+                    document.getElementById('status-text').style.color = '#eab308';
+                    document.getElementById('roll-number').innerText = 'Not Found or Out of Range';
+                }
+            } else {
+                resultCard.className = 'error';
+                document.getElementById('status-icon').innerText = '❌';
+                document.getElementById('status-text').innerText = 'No QR Code detected in image.';
+                document.getElementById('status-text').style.color = '#ef4444';
+                document.getElementById('roll-number').innerText = 'N/A';
+                document.getElementById('raw-string').innerText = 'N/A';
+            }
+        }
+    </script>
+</body>
+</html>
